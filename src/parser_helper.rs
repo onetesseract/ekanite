@@ -14,10 +14,6 @@ pub fn skip(token: lexer::LexToken, f: &mut parser::File) -> lexer::LexToken {
     }
 }
 
-pub fn skip_generic(token: lexer::LexToken, f: &mut parser::File) {
-    check_discriminant(&token, &f.tokens[f.index]);
-}
-
 pub fn check_discriminant(token: & lexer::LexToken, tk2: & lexer::LexToken) -> bool{
     mem::discriminant(token) == mem::discriminant(tk2)
 }
@@ -29,8 +25,12 @@ pub fn delimited(start: lexer::LexToken, stop: lexer::LexToken, sep: lexer::LexT
         skip(stop, f);
         return x;
     }
-    while f.index < f.tokens.len() && f.tokens[f.index] != lexer::LexToken::EOF {    
-        x.push(parser::delimited_parse_expression(f));
+    while f.index < f.tokens.len() && f.tokens[f.index] != lexer::LexToken::EOF {  
+        if f.tokens[f.index] == stop {
+            skip(stop, f);
+            break;
+        }  
+        x.push(parser::parse_expression(f));
         if f.tokens[f.index] == stop {
             skip(stop, f);
             break;
@@ -40,11 +40,11 @@ pub fn delimited(start: lexer::LexToken, stop: lexer::LexToken, sep: lexer::LexT
             println!("Unexpected {:?}, expected {:?}", f.tokens[f.index], sep);
             panic!();
         } else { f.index += 1; }
-        println!("it is now {:?}", f.tokens[f.index]);
         if f.tokens[f.index] == stop {
             skip(stop, f);
             break;
         }
     }
+    println!("Returned from delim, {:?}", f.tokens[f.index]);
     return x;
 }

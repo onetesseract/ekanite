@@ -1,4 +1,5 @@
 const PUNCS: [&str; 11] = ["{", "}", "::", ":", ";", ".", ",", "(", "[", "]", ")"];
+const OPS: [&str; 14] = ["=", "||", "&&", /* now all 7 */ "<", ">", "<=", ">=", "==", "!=", /* all 10 */ "+", "-", /* 20s */ "*", "/", "%"];
 
 #[derive(Debug)]
 #[derive(PartialEq)]
@@ -28,8 +29,7 @@ pub enum LexToken {
 
 fn classify(c: char) -> CharClass {
     match c {
-        'A'..='Z' | 'a'..='z' => CharClass::LETTER,
-        'A'..='Z' | 'a'..='z' | '_' => CharClass::ID_START,
+        'A'..='Z' | 'a'..='z' | '_'=> CharClass::LETTER,
         '0'..='9' => CharClass::DIGIT,
         '\n' | '\t' | '\r' | ' ' => CharClass::WHITESPACE,
         _ => {
@@ -44,6 +44,27 @@ fn classify(c: char) -> CharClass {
         }
     }
 }
+// should we ret now, or is there more?
+fn check_op(s: &Vec<char>) -> bool {
+    if s.len() < 1 { return true; }
+    let mut string = String::new();
+    string.push(s[0]);
+    if s.len() < 2 { return true; }
+    string.push(s[1]);
+    if OPS.contains(&(&string as &str)) { return false }
+    return true;
+}
+
+// should we ret now, or is there more?
+fn check_punc(s: &Vec<char>) -> bool {
+    if s.len() < 1 { return true; }
+    let mut string = String::new();
+    string.push(s[0]);
+    if s.len() < 2 { return true; }
+    string.push(s[1]);
+    if PUNCS.contains(&(&string as &str)) { return false }
+    return true;
+}
 
 pub fn read_next(s: &mut Vec<char>) -> LexToken {
     if s.len() == 0 {
@@ -51,9 +72,29 @@ pub fn read_next(s: &mut Vec<char>) -> LexToken {
     }
     let mut ret = String::new();
     let c = classify(s[0]);
+    if c == CharClass::OP {
+        let mut pnc = String::new();
+        // let mut is_two = false;
+        if !check_op(s) {
+            pnc.push(s[0]);
+            pnc.push(s[1]);
+            s.remove(0);
+            s.remove(0);
+        } else {
+            pnc.push(s[0]);
+            s.remove(0);
+        }
+        return LexToken::OP(pnc);
+    }
     if c == CharClass::PUNC {
         let mut pnc = String::new();
-        while s.len() != 0 && classify(s[0]) == CharClass::PUNC && !PUNCS.contains(&(&pnc as &str)) {
+        // let mut is_two = false;
+        if !check_punc(s) {
+            pnc.push(s[0]);
+            pnc.push(s[1]);
+            s.remove(0);
+            s.remove(0);
+        } else {
             pnc.push(s[0]);
             s.remove(0);
         }
@@ -87,8 +128,8 @@ pub fn read_next(s: &mut Vec<char>) -> LexToken {
             return LexToken::ML_COMMENT(comment);
         }
     }
-    if classify(s[0]) == CharClass::ID_START {
-        while s.len() != 0 && classify(s[0]) == CharClass::ID_START || classify(s[0]) == CharClass::LETTER || classify(s[0]) == CharClass::DIGIT   {
+    if classify(s[0]) == CharClass::LETTER {
+        while s.len() != 0 && classify(s[0]) == CharClass::LETTER || classify(s[0]) == CharClass::DIGIT   {
             ret.push(s[0]);
             s.remove(0);
         }
@@ -98,7 +139,7 @@ pub fn read_next(s: &mut Vec<char>) -> LexToken {
         s.remove(0);
     }
     if c == CharClass::DIGIT {
-        if s[0] == '.' {
+        if s.len() != 0 && s[0] == '.' {
             ret.push('.');
             s.remove(0);
             while s.len() != 0 && classify(s[0]) == c  {
