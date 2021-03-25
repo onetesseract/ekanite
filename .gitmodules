@@ -1,0 +1,3 @@
+[submodule "ekparser"]
+	path = ekparser
+	url = https://github.com/onetesseract/ekparser
