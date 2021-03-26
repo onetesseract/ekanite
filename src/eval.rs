@@ -2,7 +2,10 @@ use ekparser::parser;
 use ekparser::lexer;
 use crate::env::{Envir, env_def, env_set};
 use crate::env;
-fn eval(e: &mut Envir, ex: & parser::Node) -> parser::Literal {
+use crate::builtin;
+
+const BUILTINS: [&str; 1] = ["print"];
+pub fn eval(e: &mut Envir, ex: & parser::Node) -> parser::Literal {
     match ex {
         parser::Node::Literal(x) => (*x).clone(),
         parser::Node::Prog(x) => {
@@ -48,10 +51,59 @@ fn eval(e: &mut Envir, ex: & parser::Node) -> parser::Literal {
                 panic!();
             }
         }
-        parser::Node::Call(name, params) => { parser::Literal::None }
+        parser::Node::Call(name, params) => { 
+            // ok so what do we need to do?
+            // first does the fn even exist
+            if let ekparser::parser::Node::ID(x) = &**name {
+                let st: &str = &x;
+                if BUILTINS.contains(&st) {
+                    match st {
+                        "print" => {
+                            let eva = eval(e, &params[0]);
+                            match eva {
+                                parser::Literal::Num(nm) => { builtin::print(nm); },
+                                _ => panic!(),
+                            }
+                        }
+                        _ => { println!("Undefined builtin {}", st); panic!();}
+                    }
+                    return parser::Literal::None;
+                }
+                let fnc = env::fenv_get(e, x.to_string());
+                // we need to set up a NEW enviroment with the variables
+                let mut en = env::env_extend(e);
+                for i in fnc.args.iter() {
+                    eval(&mut en, i);
+                }
+                if fnc.args.len() != params.len() {
+                    println!("Wrong number of args for call to {} (expected {}, got {})", x, fnc.args.len(), params.len());
+                    panic!();
+                }
+                for n in 0..fnc.args.len() {
+                    if let ekparser::parser::Node::Dec(na, _t) = fnc.args[n].clone() {
+                        if let lexer::LexToken::ID(nam) = na {
+                            let tmp = eval(&mut en, &params[n]);
+                            env::env_set(&mut en, nam, tmp);
+                        }
+                    }
+                    
+                }
+                eval(&mut en, &fnc.body);
+            }
+
+            parser::Literal::None
+            
+            
+         }
         parser::Node::Null => parser::Literal::None,
         // _ => parser::Literal::None,
         parser::Node::FnDef(name, args, typ, body) => {
+            for i in args.iter() {
+                if !matches!(i, ekparser::parser::Node::Dec(_, _)) {
+                    println!("This is not a variable def, it can;t be in function defs.");
+                    panic!();
+                }
+            }
             if let parser::Node::ID(x) = &**name {
                 if let lexer::LexToken::ID(y) = typ {
                     env::fenv_def(e, x.to_string(), y.clone(), args.clone(), *body.clone());

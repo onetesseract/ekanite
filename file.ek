@@ -1,3 +1,9 @@
-name(): ty {
-    do();
+x: f64;
+x = 9;
+
+if x == 8 {
+    print(8);
+} else {
+    print(7);
 };
+print(x);

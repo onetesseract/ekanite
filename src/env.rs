@@ -2,25 +2,30 @@ use std::collections::HashMap;
 use ekparser::parser::Literal;
 use ekparser::parser::Node;
 
-struct EnvContent {
+pub struct EnvContent {
     l: Literal,
     t: Types,
 }
-pub(crate) struct Envir<'a> {
-    is_root: bool,
-    vars: HashMap<String, EnvContent>,
-    fns: HashMap<String, FnContent>,
-    parent: &'a Envir<'a>,
+
+pub enum EnvParent<'a> {
+    Parent(&'a Envir<'a>),
+    None,
+}
+pub struct Envir<'a> {
+    pub is_root: bool,
+    pub vars: HashMap<String, EnvContent>,
+    pub fns: HashMap<String, FnContent>,
+    pub parent: EnvParent<'a>,
 }
 
 #[derive(Clone)]
 pub struct FnContent {
-    args: Box<Vec<Node>>,
+    pub args: Box<Vec<Node>>,
     typ: Types,
-    body: Node,
+    pub body: Node,
 }
 #[derive(Clone)]
-enum Types {
+pub enum Types {
     f64,
     bool,
 }
@@ -32,7 +37,10 @@ fn env_lookup<'a>(e: &'a Envir, name: String) -> Result<&'a Envir<'a>, bool> {
         if current_env.vars.contains_key(&name) {
             return Ok(current_env);
         }
-        current_env = current_env.parent;
+        match current_env.parent {
+            EnvParent::None => return Err(false),
+            EnvParent::Parent(x) => current_env = x
+        }
     }
     if current_env.vars.contains_key(&name) {
         return Ok(current_env);
@@ -71,8 +79,8 @@ pub(crate) fn env_def(e: &mut Envir, name: String, typ: String) {
     e.vars.insert(name, EnvContent{l: Literal::Undef, t: x});
 }
 
-fn env_extend<'a>(e: &'a Envir) -> Envir<'a> {
-    return Envir{is_root: false, parent: e, vars: HashMap::new(), fns: HashMap::new()}
+pub(crate) fn env_extend<'a>(e: &'a Envir) -> Envir<'a> {
+    return Envir{is_root: false, parent: EnvParent::Parent(e), vars: HashMap::new(), fns: HashMap::new()}
 }
 
 // everything but for functions
@@ -83,7 +91,10 @@ fn fenv_lookup<'a>(e: &'a Envir, name: String) -> Result<&'a Envir<'a>, bool> {
         if current_env.fns.contains_key(&name) {
             return Ok(current_env);
         }
-        current_env = current_env.parent;
+        match current_env.parent {
+            EnvParent::None => return Err(false),
+            EnvParent::Parent(x) => current_env = x
+        }
     }
     if current_env.fns.contains_key(&name) {
         return Ok(current_env);
