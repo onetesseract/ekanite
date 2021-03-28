@@ -61,7 +61,8 @@ pub fn eval(e: &mut Envir, ex: & parser::Node) -> parser::Literal {
                         "print" => {
                             let eva = eval(e, &params[0]);
                             match eva {
-                                parser::Literal::Num(nm) => { builtin::print(nm); },
+                                parser::Literal::Num(nm) => { builtin::print_num(nm); },
+                                parser::Literal::String(s) => { builtin::print_str(s); },
                                 _ => panic!(),
                             }
                         }
@@ -82,7 +83,7 @@ pub fn eval(e: &mut Envir, ex: & parser::Node) -> parser::Literal {
                 for n in 0..fnc.args.len() {
                     if let ekparser::parser::Node::Dec(na, _t) = fnc.args[n].clone() {
                         if let lexer::LexToken::ID(nam) = na {
-                            let tmp = eval(&mut en, &params[n]);
+                            let tmp = eval(&mut e.clone(), &params[n]); //  todo: sort out immutable borrows
                             env::env_set(&mut en, nam, tmp);
                         }
                     }
@@ -100,17 +101,13 @@ pub fn eval(e: &mut Envir, ex: & parser::Node) -> parser::Literal {
         parser::Node::FnDef(name, args, typ, body) => {
             for i in args.iter() {
                 if !matches!(i, ekparser::parser::Node::Dec(_, _)) {
-                    println!("This is not a variable def, it can;t be in function defs.");
+                    println!("This is not a variable def, it can't be in function defs.");
                     panic!();
                 }
             }
             if let parser::Node::ID(x) = &**name {
-                if let lexer::LexToken::ID(y) = typ {
-                    env::fenv_def(e, x.to_string(), y.clone(), args.clone(), *body.clone());
-                    return parser::Literal::None;
-                }
-                println!("Invalid type type!");
-                panic!();
+                env::fenv_def(e, x.to_string(), String::from("bool"), args.clone(), *body.clone());
+                return parser::Literal::None;
             }
             println!("Invalid fn name!");
             panic!();

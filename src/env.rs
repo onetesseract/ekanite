@@ -2,15 +2,18 @@ use std::collections::HashMap;
 use ekparser::parser::Literal;
 use ekparser::parser::Node;
 
+#[derive(Debug)]
+#[derive(Clone)]
 pub struct EnvContent {
     l: Literal,
     t: Types,
 }
-
+#[derive(Clone)]
 pub enum EnvParent<'a> {
     Parent(&'a Envir<'a>),
     None,
 }
+#[derive(Clone)]
 pub struct Envir<'a> {
     pub is_root: bool,
     pub vars: HashMap<String, EnvContent>,
@@ -24,10 +27,13 @@ pub struct FnContent {
     typ: Types,
     pub body: Node,
 }
+
 #[derive(Clone)]
+#[derive(Debug)]
 pub enum Types {
     f64,
     bool,
+    str,
 }
 
 // find the scope in which a variable is defined
@@ -74,6 +80,7 @@ pub(crate) fn env_def(e: &mut Envir, name: String, typ: String) {
     let x = match &typ as &str {
         "f64" => Types::f64,
         "bool" => Types::bool,
+        "str" => Types::str,
         _ => panic!("Unknown type {}", typ),
     };
     e.vars.insert(name, EnvContent{l: Literal::Undef, t: x});
@@ -104,7 +111,7 @@ fn fenv_lookup<'a>(e: &'a Envir, name: String) -> Result<&'a Envir<'a>, bool> {
 
 pub(crate) fn fenv_get(e: &Envir, name: String) -> FnContent {
     if !e.fns.contains_key(&name) {
-        println!("Undefined variable {}", name);
+        println!("Undefined function {}", name);
         panic!();
     }
     let x = e.fns.get(&name).expect("Undefined function!");
@@ -117,5 +124,5 @@ pub(crate) fn fenv_def(e: &mut Envir, name: String, typ: String, args: Box<Vec<N
         "bool" => Types::bool,
         _ => panic!("Unknown type {}", typ),
     };
-    e.vars.insert(name, EnvContent{l: Literal::Undef, t: x});
+    e.fns.insert(name, FnContent{args: args, body: prog, typ: x});
 }
