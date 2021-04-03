@@ -1,20 +1,5 @@
-chk(y: f64) {
-    if y == 103 {
-        print("Y is 103");
-    } else {
-        print("Y is not equal to 103 because Y is actually ");
-        print(y);
-        print("\n");
-    };
+add(x: f64, y: f64): f64 {
+    return x + y;
 };
-x: str;
-x = "hello world!\n";
-print(x);
-if true {
-    print(x);
-};
-z: f64; // comment
-/*COM*/
-// ent
-z = 102;
-chk(z);
+
+print(add(1, 2));

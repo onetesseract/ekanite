@@ -2,12 +2,6 @@ use std::collections::HashMap;
 use ekparser::parser::Literal;
 use ekparser::parser::Node;
 
-#[derive(Debug)]
-#[derive(Clone)]
-pub struct EnvContent {
-    l: Literal,
-    t: Types,
-}
 #[derive(Clone)]
 pub enum EnvParent<'a> {
     Parent(&'a Envir<'a>),
@@ -16,7 +10,7 @@ pub enum EnvParent<'a> {
 #[derive(Clone)]
 pub struct Envir<'a> {
     pub is_root: bool,
-    pub vars: HashMap<String, EnvContent>,
+    pub vars: HashMap<String, TypeContent>,
     pub fns: HashMap<String, FnContent>,
     pub parent: EnvParent<'a>,
 }
@@ -30,10 +24,41 @@ pub struct FnContent {
 
 #[derive(Clone)]
 #[derive(Debug)]
+pub enum F64Vals {
+    Some(f64),
+    None,
+}
+
+#[derive(Clone)]
+#[derive(Debug)]
+pub enum BoolVals {
+    Some(bool),
+    None,
+}
+
+#[derive(Clone)]
+#[derive(Debug)]
+pub enum StrVals{
+    Some(String),
+    None,
+}
+
+#[derive(Clone)]
+#[derive(Debug)]
+pub enum TypeContent{
+    f64(F64Vals),
+    bool(BoolVals),
+    str(StrVals),
+    void,
+}
+
+#[derive(Clone)]
+#[derive(Debug)]
 pub enum Types {
     f64,
     bool,
     str,
+    void,
 }
 
 // find the scope in which a variable is defined
@@ -54,36 +79,46 @@ fn env_lookup<'a>(e: &'a Envir, name: String) -> Result<&'a Envir<'a>, bool> {
     return Err(false);
 }
 
-pub(crate) fn env_get(e: &Envir, name: String) -> Literal {
+fn is_undef(x: TypeContent) -> bool {
+    match x {
+        TypeContent::f64(y) => {!matches!(y, F64Vals::Some(_))},
+        TypeContent::bool(y) => {!matches!(y, BoolVals::Some(_))},
+        TypeContent::str(y) => {!matches!(y, StrVals::Some(_))},
+        TypeContent::void => true,
+    }
+}
+pub(crate) fn env_get<'a>(e: &'a Envir, name: String) -> TypeContent {
     if !e.vars.contains_key(&name) {
         println!("Undefined variable {}", name);
         panic!();
     }
     let x = e.vars.get(&name).expect("Undefined variable!");
-    if x.l == Literal::Undef {
+    if is_undef(x.clone()) {
         println!("Reading an undefined variable!");
         panic!();
     }
-    x.l.clone()
+    x.clone()
 }
 
-pub(crate) fn env_set(e: &mut Envir, name: String, l: Literal) {
+pub(crate) fn env_set<'a> (e: &mut Envir<'a>, name: String, l: TypeContent) {
     if !e.vars.contains_key(&name) {
         println!("Undefined variable {}", name);
         panic!();
     }
-    let x = e.vars.get(&name).expect("Undefined variable!");
-    e.vars.insert(name, EnvContent{t: x.t.clone(), l: l});
+    let _x = e.vars.get(&name).expect("Undefined variable!");
+    e.vars.insert(name, l);
+    
 }
 
 pub(crate) fn env_def(e: &mut Envir, name: String, typ: String) {
     let x = match &typ as &str {
-        "f64" => Types::f64,
-        "bool" => Types::bool,
-        "str" => Types::str,
+        "f64" => TypeContent::f64(F64Vals::None),
+        "bool" => TypeContent::bool(BoolVals::None),
+        "str" => TypeContent::str(StrVals::None),
+        "void" => TypeContent::void,
         _ => panic!("Unknown type {}", typ),
     };
-    e.vars.insert(name, EnvContent{l: Literal::Undef, t: x});
+    e.vars.insert(name, x);
 }
 
 pub(crate) fn env_extend<'a>(e: &'a Envir) -> Envir<'a> {
@@ -122,6 +157,8 @@ pub(crate) fn fenv_def(e: &mut Envir, name: String, typ: String, args: Box<Vec<N
     let x = match &typ as &str {
         "f64" => Types::f64,
         "bool" => Types::bool,
+        "str" => Types::str,
+        "void" => Types::void,
         _ => panic!("Unknown type {}", typ),
     };
     e.fns.insert(name, FnContent{args: args, body: prog, typ: x});
