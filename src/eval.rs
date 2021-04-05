@@ -8,17 +8,139 @@ use crate::env;
 use crate::builtin;
 
 const BUILTINS: [&str; 1] = ["print"];
-pub fn eval(e: &mut Envir, ex: &parser::Node) -> env::TypeContent {
+
+// this is bad but it's the only way I can think of
+enum ArbitraryData<'a> {
+    Assign(AssignArbtraryData<'a>),
+    LeftBinary(LeftBinaryArbitraryData<'a>),
+    RightBinary(RightBinaryArbitraryData<'a>),
+    If(IfArbitraryData<'a>),
+    CallParams(CallParamsArbitraryData<'a>),
+    CallArgs(CallArgsArbitraryData<'a>),
+    Nothing
+}
+struct AssignArbtraryData<'a> {
+    env: &'a mut Envir<'a>,
+    name: String,
+}
+struct LeftBinaryArbitraryData<'a> {
+    right: parser::Node,
+    op: usize,
+    finalCallback: &'a dyn Fn(&mut Envir, env::TypeContent, ArbitraryData),
+    finalAData: Box<ArbitraryData<'a>>,
+}
+
+struct RightBinaryArbitraryData<'a> {
+    left: env::TypeContent,
+    lb: LeftBinaryArbitraryData<'a>,
+}
+struct IfArbitraryData<'a> {
+    finalCallback: &'a dyn Fn(&mut Envir, env::TypeContent, ArbitraryData),
+    finalAData: Box<ArbitraryData<'a>>,
+    then: Box<parser::Node>,
+    els: Box<parser::Node>,
+}
+
+struct CallParamsArbitraryData<'a> {
+    finalCallback: &'a dyn Fn(&mut Envir, env::TypeContent, ArbitraryData),
+    finalAData: Box<ArbitraryData<'a>>,
+    oldEnv: &'a mut Envir<'a>,
+    args: Vec<parser::Node>,
+    idx: usize,
+}
+struct CallArgsArbitraryData<'a> {
+    finalCallback: &'a dyn Fn(&mut Envir, env::TypeContent, ArbitraryData),
+    finalAData: Box<ArbitraryData<'a>>,
+    newEnv: &'a mut Envir<'a>,
+    args: Vec<parser::Node>,
+    idx: usize,
+}
+fn oneBigcallback(e: &mut Envir, c: env::TypeContent, a: ArbitraryData) {
+    match a {
+        ArbitraryData::Assign(x) => {
+            env_set(x.env, x.name, c);
+        }
+        ArbitraryData::LeftBinary(x) => {
+            eval(e, &x.right, a, &RightBinaryCallBack);
+        }
+    }
+}
+
+fn RightBinaryCallBack(e: &mut Envir, c: env::TypeContent, a: ArbitraryData) {
+    if let ArbitraryData::RightBinary(x) = a {
+        let applied = apply_op(x.lb.op, x.left, c);
+        (x.lb.finalCallback)(e, applied, *x.lb.finalAData); //todo: figure out what A should be
+    }
+}
+
+fn IfCallback(e: &mut Envir, c: env::TypeContent, a: ArbitraryData) {
+    if let ArbitraryData::If(x) = a {
+        if let env::TypeContent::bool(env::BoolVals::Some(y)) = c {
+            if y {
+                eval(e, &*x.then, *x.finalAData, x.finalCallback);
+            } else {
+                eval(e, &*x.els, *x.finalAData, x.finalCallback);
+            }
+            // return parser::Literal::None;
+        } else if let env::TypeContent::bool(env::BoolVals::None) = c {
+            println!("If condition is not defined!");
+            panic!();
+        }
+        else {
+            println!("If condition does not return a boolean!");
+            panic!();
+        }
+    } else {
+        println!("ArbitraryData supplied to IfCallback not of type If");
+        panic!();
+    }
+}
+
+fn BuiltinPrintCallback(e: &mut Envir, c: env::TypeContent, a: ArbitraryData) {
+    match c {
+        env::TypeContent::f64(nm) => { if let env::F64Vals::Some(x) = nm { builtin::print_num(x)} else { println!("Cannot use undefined value!"); panic!() } },
+        env::TypeContent::str(s) => { if let env::StrVals::Some(x) = s { builtin::print_str(x.to_string())} else { println!("Cannot use undefined value!"); panic!() } },
+        _ => panic!(),
+    }
+}
+
+fn CallParamsCallback(e: &mut Envir, c: env::TypeContent, a: ArbitraryData) {
+    if let ArbitraryData::CallParams(x) = a {
+        x.idx += 1;
+        if x.idx == x.args.len() {
+            (x.finalCallback)()
+        } else {
+            eval(e, &x.args[x.idx], a, &CallParamsCallback);
+        }
+    } else {
+        println!("ArbitraryData supplied to CallParamsCallback not of type CallParams");
+        panic!();
+    }
+}
+
+fn CallArgsCallback(e: &mut Envir, c: env::TypeContent, a: ArbitraryData) {
+    if let ArbitraryData::CallParams(x) = a {
+        x.idx += 1;
+        if let ekparser::parser::Node::Dec(na, _t) = x.args[x.idx].clone() {
+            if let lexer::LexToken::ID(nam) = na {
+                eval(&mut e.clone(), &params[n]); //  todo: sort out immutable borrows
+                env::env_set(&mut en, nam, tmp);
+            }
+        }
+    }
+}
+
+pub fn eval(e: &mut Envir, ex: &parser::Node, a: ArbitraryData, callback: &dyn Fn(&mut Envir, env::TypeContent, ArbitraryData)) {
     match ex {
         parser::Node::Literal(x) => {
             match x {
-                parser::Literal::Num(x) => {env::TypeContent::f64(env::F64Vals::Some(*x))}
-                parser::Literal::Bool(x) => {env::TypeContent::bool(env::BoolVals::Some(*x))}
+                parser::Literal::Num(x) => {callback(e, env::TypeContent::f64(env::F64Vals::Some(*x)), a)}
+                parser::Literal::Bool(x) => {callback(e, env::TypeContent::bool(env::BoolVals::Some(*x)), a)}
                 parser::Literal::String(x) => {
-                    env::TypeContent::str(env::StrVals::Some(x.to_string()))
+                    callback(e, env::TypeContent::str(env::StrVals::Some(x.to_string())),a)
                 }
-                parser::Literal::Undef => env::TypeContent::void,
-                parser::Literal::None => env::TypeContent::void,
+                parser::Literal::Undef => callback(e, env::TypeContent::void, a),
+                parser::Literal::None => callback(e, env::TypeContent::void, a),
             }
 
         },
@@ -28,23 +150,28 @@ pub fn eval(e: &mut Envir, ex: &parser::Node) -> env::TypeContent {
             }
             return env::TypeContent::void;
         }
-        parser::Node::ID(x) => env::env_get(e, x.to_string()),
+        parser::Node::ID(x) => {
+            callback(e, env::env_get(e, x.to_string()), a);
+        },
         parser::Node::Binary(x, y, z) => {
             if *y == 0 {
                 if let parser::Node::ID(x) = &**x {
-                    let p = eval(e, z);
-                    env::env_set(e, x.to_string(), p);
-                    return env::TypeContent::void;
+                    //eval(e, z);
+                    let a = ArbitraryData::Assign(AssignArbtraryData{env: e, name: x.to_string()});
+                    eval(e, z, a, &oneBigcallback);
                 }
+                println!("Cannot assign to  non-ID");
+                panic!();
             }
-            return apply_op(*y, eval(e,x), eval(e,z));
+            let p = ArbitraryData::LeftBinary(LeftBinaryArbitraryData{right: **z, op: *y, finalAData: Box::new(a), finalCallback: callback});
+            eval(e, x, p, &oneBigcallback);
         }
 
         parser::Node::Dec(name, typ) => {
             if let ekparser::lexer::LexToken::ID(x) = name {
                 if let ekparser::lexer::LexToken::ID(y) = typ {
                     env::env_def(e, x.to_string(), y.to_string());
-                    return env::TypeContent::void;
+                    callback(e, env::TypeContent::void, a);
                 }
             }
             println!("Bad name/types for declaration!");
@@ -52,22 +179,8 @@ pub fn eval(e: &mut Envir, ex: &parser::Node) -> env::TypeContent {
             
         }
         parser::Node::If(cond, then, els) => {
-            let res = eval(e, cond);
-            if let env::TypeContent::bool(env::BoolVals::Some(y)) = res {
-                if y {
-                    return eval(e, then);
-                } else {
-                    return eval(e, els);
-                }
-                // return parser::Literal::None;
-            } else if let env::TypeContent::bool(env::BoolVals::None) = res {
-                println!("If condition is not defined!");
-                panic!();
-            }
-            else {
-                println!("If condition does not return a boolean!");
-                panic!();
-            }
+            let p = ArbitraryData::If(IfArbitraryData{then: *then, els: *els, finalAData: Box::new(a), finalCallback: callback});
+            eval(e, cond, p, &IfCallback);
         }
         parser::Node::Call(name, params) => { 
             // ok so what do we need to do?
@@ -77,16 +190,11 @@ pub fn eval(e: &mut Envir, ex: &parser::Node) -> env::TypeContent {
                 if BUILTINS.contains(&st) {
                     match st {
                         "print" => {
-                            let eva = eval(e, &params[0]);
-                            match eva {
-                                env::TypeContent::f64(nm) => { if let env::F64Vals::Some(x) = nm { builtin::print_num(x)} else { println!("Cannot use undefined value!"); panic!() } },
-                                env::TypeContent::str(s) => { if let env::StrVals::Some(x) = s { builtin::print_str(x.to_string())} else { println!("Cannot use undefined value!"); panic!() } },
-                                _ => panic!(),
-                            }
+                            eval(e, &params[0], a, &BuiltinPrintCallback);
+                            
                         }
                         _ => { println!("Undefined builtin {}", st); panic!();}
                     }
-                    return env::TypeContent::void;
                 }
                 let fnc = env::fenv_get(e, x.to_string());
                 // we need to set up a NEW enviroment with the variables
@@ -99,12 +207,7 @@ pub fn eval(e: &mut Envir, ex: &parser::Node) -> env::TypeContent {
                     panic!();
                 }
                 for n in 0..fnc.args.len() {
-                    if let ekparser::parser::Node::Dec(na, _t) = fnc.args[n].clone() {
-                        if let lexer::LexToken::ID(nam) = na {
-                            let tmp = eval(&mut e.clone(), &params[n]); //  todo: sort out immutable borrows
-                            env::env_set(&mut en, nam, tmp);
-                        }
-                    }
+                    
                     
                 }
                 if let ekparser::parser::Node::Prog(vc) = fnc.body.clone() {
